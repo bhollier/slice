@@ -21,6 +21,8 @@ fmt.Printf("%d", s[0].(int) + s[1].(int))
 All functions in the `Slice` interface have a Go equivalent, except the 
 `Prepend` function, which exists for simplicity and optimisation reasons
 
+Technical documentation is [here](https://pkg.go.dev/github.com/bhollier/slice)
+
 ### Currently, the following data structures are supported:
 
 - `Wrapper` (Simple wrapper around `[]interface{}`)
