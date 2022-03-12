@@ -1,166 +1,192 @@
 package slice
 
-import "reflect"
-
-// Interface type for an iterator
-type Iterator interface {
-	// Returns whether there is a next element
+// Iterator is an interface type for an iterator
+type Iterator[T any] interface {
+	// HasNext returns whether there is a next element
 	HasNext() bool
 
-	// Goes to the next element, then returns false if the end of the slice
+	// Next goes to the next element, then returns false if the end of the slice
 	// was reached
 	Next() bool
 
-	// Returns whether there is a previous element
+	// HasPrev returns whether there is a previous element
 	HasPrev() bool
 
-	// Goes to the previous element, then returns false if the start of the
+	// Prev goes to the previous element, then returns false if the start of the
 	// slice was reached
 	Prev() bool
 
-	// Gets the element the iterator is currently pointed to
-	Elem() interface{}
+	// Get gets the element the iterator is currently pointed to
+	Get() T
+
+	// Set sets the value of the element the iterator is currently pointed to
+	Set(T)
 }
 
-// Interface type for a generic data structure that behaves like a []interface
+// Slice is an interface type for a generic data structure that behaves like a []T
 // type
-type Slice interface {
-	// Copies the given element(s) onto the end of the slice. This function is
+type Slice[T any] interface {
+	// Append copies the given element(s) onto the end of the slice. This function is
 	// roughly equivalent to `append(slice, elems...)`
-	Append(...interface{}) Slice
+	Append(...T) Slice[T]
 
-	// Copies the elements in the given slice onto the end of this slice
-	AppendSlice(Slice) Slice
+	// AppendSlice copies the elements in the given slice onto the end of this slice
+	AppendSlice(Slice[T]) Slice[T]
 
-	// Copies the given elements onto the start of the slice. This function is
+	// Prepend copies the given elements onto the start of the slice. This function is
 	// roughly equivalent to `append(elems, slice...)`
-	Prepend(...interface{}) Slice
+	Prepend(...T) Slice[T]
 
-	// Copies the elements in the given slice onto the start of this slice
-	PrependSlice(Slice) Slice
+	// PrependSlice copies the elements in the given slice onto the start of this slice
+	PrependSlice(Slice[T]) Slice[T]
 
-	// Gets a subset of the slice. This function is roughly equivalent to
+	// Slice gets a subset of the slice. This function is roughly equivalent to
 	// `slice[i:j]`
-	Slice(int, int) Slice
+	Slice(int, int) Slice[T]
 
-	// Gets the element at the given index. This function is roughly equivalent
+	// Get gets the element at the given index. This function is roughly equivalent
 	// to `slice[i]`
-	Index(int) interface{}
+	Get(int) T
 
-	// Creates an iterator, pointed to the first element
-	IterStart() Iterator
+	// Set sets the value of the element at the given index. This function is
+	// roughly equivalent to `slice[i] = elem`
+	Set(int, T)
 
-	// Creates a reverse iterator, pointed to the first element
-	ReverseIterStart() Iterator
+	// IterStart creates an iterator, pointed to the first element
+	IterStart() Iterator[T]
 
-	// Creates an iterator, pointed to the last elements
-	IterEnd() Iterator
+	// ReverseIterStart creates a reverse iterator, pointed to the first element
+	ReverseIterStart() Iterator[T]
 
-	// Creates a reverse iterator, pointed to the last element
-	ReverseIterEnd() Iterator
+	// IterEnd creates an iterator, pointed to the last elements
+	IterEnd() Iterator[T]
 
-	// Creates a deep copy of the slice
-	DeepCopy() Slice
+	// ReverseIterEnd creates a reverse iterator, pointed to the last element
+	ReverseIterEnd() Iterator[T]
 
-	// Gets the slice's length. This function is roughly equivalent to
+	// DeepCopy creates a deep copy of the slice
+	DeepCopy() Slice[T]
+
+	// Len gets the slice's length. This function is roughly equivalent to
 	// `len(slice)`
 	Len() int
 
-	// Gets the slice's capacity. This function is roughly equivalent to
+	// Cap gets the slice's capacity. This function is roughly equivalent to
 	// `cap(slice)`
 	Cap() int
 
-	// Converts the slice to an []interface{} type
-	ToGoSlice() []interface{}
+	// ToGoSlice converts the slice to an []T type
+	ToGoSlice() []T
 }
-
-type bucket []interface{}
 
 // Essentially math.Max for ints
 func atLeast(a, b int) int {
-	if a > b {return a}
+	if a > b {
+		return a
+	}
 	return b
 }
 
-// Appends an interface{} to the given slice. intf must be some kind of slice
-func appendNativeSliceToSlice(s Slice, slice interface{}) Slice {
-	switch v := slice.(type) {
-	case []interface{}:
-		return s.Append(v...)
-	default:
-		val := reflect.ValueOf(slice)
-		// Make sure the slice is a slice
-		if val.Kind() != reflect.Slice {
-			panic("given slice is not slice type")
-		}
-		// Iterate over the elements of the slice
-		for i := 0; i < val.Len(); i++ {
-			// Add it
-			s = s.Append(val.Index(i).Interface())
-		}
-		return s
+// Essentially math.Min for ints
+func atMost(a, b int) int {
+	if a < b {
+		return a
 	}
+	return b
 }
 
-// Converts a slice to an []interface{} type
-func ToGoSlice(s Slice) []interface{} {
+// ToGoSlice converts a slice to a []T type
+func ToGoSlice[T any](s Slice[T]) []T {
 	// Create a slice
-	slice := make([]interface{}, 0, s.Len())
+	slice := make([]T, 0, atLeast(1, s.Len()))
 	// Iterate over the elements
 	iter := s.IterStart()
 	for iter.Next() {
 		// Add the element to the slice
-		slice = append(slice, iter.Elem())
+		slice = append(slice, iter.Get())
 	}
 	return slice
 }
 
-// Returns a slice where the element at the given index is erased. Equivalent to
+// Erase returns a slice where the element at the given index is erased. Equivalent to
 // `append(s[:index], s[index + 1:]...)`. Warning: this function does not copy
 // s, so the contents of s can be (and probably will be) modified. The
 // Slice.Erase() function should be used instead of this function where
 // possible, as it can be faster
-func Erase(s Slice, index int) Slice {
-	return s.Slice(0, index).AppendSlice(s.Slice(index + 1, s.Len()))
+func Erase[T any](s Slice[T], index int) Slice[T] {
+	return s.Slice(0, index).DeepCopy().AppendSlice(s.Slice(index+1, s.Len()))
 }
 
-// Returns a slice where the range of elements are erased. Equivalent to
+// EraseRange returns a slice where the range of elements are erased. Equivalent to
 // `append(s[:i], s[j + 1:]...)`. Warning: this function does not copy s, so the
 // contents of s can be modified. The Slice.EraseRange function should be used
 // instead of this function where possible, as it can be faster
-func EraseRange(s Slice, i, j int) Slice {
-	return s.Slice(0, i).AppendSlice(s.Slice(j + 1, s.Len()))
+func EraseRange[T any](s Slice[T], i, j int) Slice[T] {
+	return s.Slice(0, i).DeepCopy().AppendSlice(s.Slice(j+1, s.Len()))
 }
 
-// A reverse iterator, essentially an inverted iterator
-type ReverseIterator struct {
-	Iterator
+// Insert returns a slice where the given element was inserted at the given index.
+// Equivalent to:
+//
+//  s = append(s[:index + 1], s[index:])
+//  s[index] = elem
+//
+// The Slice.Insert() function should be used instead of this function where
+// possible, as it can be faster
+func Insert[T any](s Slice[T], index int, elem T) Slice[T] {
+	s = s.Slice(0, index+1).DeepCopy().AppendSlice(s.Slice(index, s.Len()))
+	s.Set(index, elem)
+	return s
 }
 
-// Create a reverse iterator
-func Reverse(i Iterator) Iterator {
+// InsertSlice returns a slice where the given slice of elements were inserted at the given
+// index. Equivalent to:
+//
+//  s = append(s[:index + len(elems)], s[index:])
+//  copy(s[index:], elems)
+//
+// The Slice.InsertSlice() function should be used instead of this function where
+// possible, as it can be faster
+func InsertSlice[T any](s Slice[T], index int, elems Slice[T]) Slice[T] {
+	s = s.Slice(0, index+elems.Len()).DeepCopy().AppendSlice(s.Slice(index, s.Len()))
+	iter := elems.IterStart()
+	i := 0
+	for iter.Next() {
+		s.Set(index+i, iter.Get())
+		i++
+	}
+	return s
+}
+
+// ReverseIterator is a reverse iterator, essentially an inverted iterator
+type ReverseIterator[T any] struct {
+	Iterator[T]
+}
+
+// Reverse creates a reverse iterator
+func Reverse[T any](i Iterator[T]) Iterator[T] {
 	// If the given iterator is a reverse iterator
-	reverse, ok := i.(*ReverseIterator)
+	reverse, ok := i.(ReverseIterator[T])
 	if ok {
 		// The reverse iterator is just the unwrapped iterator
 		return reverse.Iterator
 	}
 	// Otherwise return a new iterator
-	return &ReverseIterator{i}
+	return ReverseIterator[T]{i}
 }
 
-func (i *ReverseIterator) HasNext() bool {
+func (i ReverseIterator[T]) HasNext() bool {
 	return i.Iterator.HasPrev()
 }
 
-func (i *ReverseIterator) Next() bool {
+func (i ReverseIterator[T]) Next() bool {
 	return i.Iterator.Prev()
 }
 
-func (i *ReverseIterator) HasPrev() bool {
+func (i ReverseIterator[T]) HasPrev() bool {
 	return i.Iterator.HasNext()
 }
 
-func (i *ReverseIterator) Prev() bool {
+func (i ReverseIterator[T]) Prev() bool {
 	return i.Iterator.Next()
 }

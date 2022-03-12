@@ -5,30 +5,33 @@ import (
 	"unsafe"
 )
 
-// The default capacity of a distributed slice bucket, currently 256 bytes
-const DefaultDistributedBucketCapacity =
-	int(256 / unsafe.Sizeof(interface{}(nil)))
+// DefaultDistributedBucketCapacity is the default capacity of a distributed slice bucket,
+// currently 256 bytes
+const DefaultDistributedBucketCapacity = int(256 / unsafe.Sizeof(interface{}(nil)))
+
 //	int(unsafe.Sizeof(cpu.CacheLinePad{}) /
 //		unsafe.Sizeof(interface{}(nil)))
 
 // The capacity of a bucket, currently the number of interface{}
 // that can fit on a cache line
-//const BucketCapacity = int(unsafe.Sizeof(cpu.CacheLinePad{}) /
+// const BucketCapacity = int(unsafe.Sizeof(cpu.CacheLinePad{}) /
 //	unsafe.Sizeof(interface{}(nil)))
 
-// Slice type, implemented as an array of buckets, similar to an unrolled linked
+type bucket[T any] []T
+
+// Distributed is a Slice type, implemented as an array of buckets, similar to an unrolled linked
 // list (see https://en.wikipedia.org/wiki/Unrolled_linked_list)
-type Distributed struct {
-	buckets []bucket
+type Distributed[T any] struct {
+	buckets   []bucket[T]
 	bucketCap int
-	start int
-	end int
+	start     int
+	end       int
 }
 
-// Create an empty Distributed Slice. cap is the capacity of each bucket, not
-// the capacity of the entire slice. If cap is 0, DefaultBucketCapacity is used
+// EmptyDistributed creates an empty Distributed Slice. cap is the capacity of each bucket, not
+// the capacity of the entire slice. If cap is 0, DefaultDistributedBucketCapacity is used
 // instead
-func EmptyDistributed(len, cap int) Slice {
+func EmptyDistributed[T any](len, cap int) Slice[T] {
 	// If no capacity was given
 	if cap == 0 {
 		// Set it to the default
@@ -36,16 +39,16 @@ func EmptyDistributed(len, cap int) Slice {
 	}
 
 	// Calculate the initial number of buckets
-	numInitialBuckets := (len / cap) + 1
-	s := &Distributed{
-		buckets:   make([]bucket, numInitialBuckets),
+	numInitialBuckets := (len + cap - 1) / cap
+	s := Distributed[T]{
+		buckets:   make([]bucket[T], numInitialBuckets),
 		bucketCap: cap,
 		start:     0,
 		end:       0,
 	}
 	// Add the nodes
 	for i := 0; i < numInitialBuckets; i++ {
-		s.buckets[i] = make(bucket, s.bucketCap)
+		s.buckets[i] = make(bucket[T], s.bucketCap)
 	}
 	// If there is at least one element
 	if len > 0 {
@@ -56,134 +59,155 @@ func EmptyDistributed(len, cap int) Slice {
 	return s
 }
 
-// Create a Distributed Slice from any type of slice
-func DistributedFrom(slice interface{}) Slice {
-	return appendNativeSliceToSlice(EmptyDistributed(0, 0), slice)
+// DistributedFrom creates a Distributed Slice from a Go slice
+func DistributedFrom[T any](slice []T) Slice[T] {
+	return EmptyDistributed[T](0, 0).Append(slice...)
 }
 
-func (s *Distributed) Append(elems ...interface{}) Slice {
-	return s.AppendSlice(wrap(elems))
+func (s Distributed[T]) Append(elems ...T) Slice[T] {
+	return s.AppendSlice(Wrap(elems))
 }
 
-func (s *Distributed) AppendSlice(elems Slice) Slice {
-	// Copy the slice
-	slice := *s
+func (s Distributed[T]) AppendSlice(elems Slice[T]) Slice[T] {
+	// If the slice is empty
+	if len(s.buckets) == 0 {
+		// Add a node
+		s.buckets = append(s.buckets, make(bucket[T], s.bucketCap))
+		// Reset the start and end points
+		s.start = 0
+		s.end = 0
+	}
 
 	// If the bucket is full
-	if slice.end == s.bucketCap {
+	if s.end == s.bucketCap {
 		// Add a new node
-		slice.buckets = append(slice.buckets, make(bucket, s.bucketCap))
+		s.buckets = append(s.buckets, make(bucket[T], s.bucketCap))
 		// Reset the end point
-		slice.end = 0
+		s.end = 0
 	}
 
 	// Iterate over the elements
 	iter := elems.IterStart()
 	for iter.Next() {
 		// Copy the element
-		slice.buckets[len(slice.buckets) - 1][slice.end] = iter.Elem()
+		s.buckets[len(s.buckets)-1][s.end] = iter.Get()
 		// Move the end point forward
-		slice.end++
+		s.end++
 		// If the bucket is full
-		if slice.end == s.bucketCap {
+		if s.end == s.bucketCap {
 			// Add a new node
-			slice.buckets = append(slice.buckets, make(bucket, s.bucketCap))
+			s.buckets = append(s.buckets, make(bucket[T], s.bucketCap))
 			// Reset the end point
-			slice.end = 0
+			s.end = 0
 		}
 	}
 
-	return &slice
+	return s
 }
 
-func (s *Distributed) Prepend(elems ...interface{}) Slice {
-	return s.PrependSlice(wrap(elems))
+func (s Distributed[T]) Prepend(elems ...T) Slice[T] {
+	return s.PrependSlice(Wrap(elems))
 }
 
-func (s *Distributed) PrependSlice(elems Slice) Slice {
-	// Copy the slice
-	slice := *s
+func (s Distributed[T]) PrependSlice(elems Slice[T]) Slice[T] {
+	// If the slice is empty
+	if len(s.buckets) == 0 {
+		// Add a node
+		s.buckets = append(s.buckets, make(bucket[T], s.bucketCap))
+		// Set the start and end points
+		s.start = s.bucketCap
+		s.end = s.bucketCap
+	}
 
 	// Iterate over the elements
 	iter := elems.IterEnd()
 	for iter.Prev() {
 		// Move the start point backwards
-		slice.start--
+		s.start--
 		// If the start point is out of bounds
-		if slice.start < 0 {
+		if s.start < 0 {
 			// Add a new bucket
-			slice.buckets = append([]bucket{make(bucket, s.bucketCap)}, slice.buckets...)
+			s.buckets = append([]bucket[T]{make(bucket[T], s.bucketCap)}, s.buckets...)
 			// Reset the start point
-			slice.start = slice.bucketCap - 1
+			s.start = s.bucketCap - 1
 		}
 
 		// Copy the element
-		slice.buckets[0][slice.start] = iter.Elem()
+		s.buckets[0][s.start] = iter.Get()
 	}
 
-	return &slice
+	return s
 }
 
-func (s *Distributed) Slice(i, j int) Slice {
-	// Copy the slice
-	slice := *s
+func (s Distributed[T]) Slice(i, j int) Slice[T] {
+	// If the slice needs to be grown
+	if j > s.Len() {
+		s = s.Append(make([]T, j-s.Len())...).(Distributed[T])
+	}
 
-	slen := s.Len()
-	if i < 0 || i > slen {
+	if i < 0 {
 		panic(fmt.Sprintf("index [%d] out of range", i))
 	}
-	if j < 0 || j > slen {
+	if j < 0 {
 		panic(fmt.Sprintf("index [%d] out of range", j))
 	}
 
 	// Calculate the real i and j index
-	iIndex, jIndex := i + slice.start, j + slice.start
+	iIndex, jIndex := i+s.start, j+s.start
 
 	// Calculate the start and end buckets
-	bucketsStart, bucketsEnd := iIndex / slice.bucketCap, jIndex / slice.bucketCap
-
-	// Make sure there is at least one bucket
-	if bucketsStart == bucketsEnd {bucketsEnd++}
+	bucketsStart := iIndex / s.bucketCap
+	bucketsEnd := (jIndex + s.bucketCap - 1) / s.bucketCap
 
 	// Reslice the buckets slice
-	slice.buckets = slice.buckets[bucketsStart:bucketsEnd]
+	s.buckets = s.buckets[bucketsStart:bucketsEnd]
 
 	// Set the start and end point
-	slice.start = iIndex % slice.bucketCap
-	slice.end = jIndex % slice.bucketCap
+	s.start = iIndex % s.bucketCap
+	s.end = ((jIndex - 1) % s.bucketCap) + 1
 
 	// Return the slice
-	return &slice
+	return s
 }
 
-func (s *Distributed) Index(i int) interface{} {
+func (s Distributed[T]) Get(i int) T {
 	index := i + s.start
-	return s.buckets[index / s.bucketCap][index % s.bucketCap]
+	return s.buckets[index/s.bucketCap][index%s.bucketCap]
 }
 
-type distributedIterator struct {
-	slice Distributed
+func (s Distributed[T]) Set(i int, elem T) {
+	index := i + s.start
+	s.buckets[index/s.bucketCap][index%s.bucketCap] = elem
+}
+
+type distributedIterator[T any] struct {
+	slice       Distributed[T]
 	bucketIndex int
-	index int
+	index       int
 }
 
-func (i *distributedIterator) HasNext() bool {
+func (i *distributedIterator[T]) HasNext() bool {
+	// There is no next if the slice is empty
+	if len(i.slice.buckets) == 0 {
+		return false
+	}
+
 	// Set the capacity of the current bucket
 	bucketCap := i.slice.bucketCap
 	// If this is the last bucket
-	if i.bucketIndex == len(i.slice.buckets) - 1 {
+	if i.bucketIndex == len(i.slice.buckets)-1 {
 		// Set the capacity as the end of the slice
 		bucketCap = i.slice.end
 	}
 
 	// There is another element if the next index is still inside the bounds of
 	// the bucket
-	return i.index + 1 < bucketCap ||
+	return i.index+1 < bucketCap ||
 		// Or if there is a next bucket
-		i.bucketIndex + 1 < len(i.slice.buckets)
+		i.bucketIndex+1 < len(i.slice.buckets)
 }
 
-func (i *distributedIterator) Next() bool {
+func (i *distributedIterator[T]) Next() bool {
 	if i.HasNext() {
 		// Go to the next element
 		i.index++
@@ -201,7 +225,12 @@ func (i *distributedIterator) Next() bool {
 	return false
 }
 
-func (i *distributedIterator) HasPrev() bool {
+func (i *distributedIterator[T]) HasPrev() bool {
+	// There is no next if the slice is empty
+	if len(i.slice.buckets) == 0 {
+		return false
+	}
+
 	// Set the start point of the current bucket
 	start := 0
 	// If this is the first bucket
@@ -217,7 +246,7 @@ func (i *distributedIterator) HasPrev() bool {
 		i.bucketIndex > 0
 }
 
-func (i *distributedIterator) Prev() bool {
+func (i *distributedIterator[T]) Prev() bool {
 	if i.HasPrev() {
 		// Go to the previous element
 		i.index--
@@ -226,7 +255,7 @@ func (i *distributedIterator) Prev() bool {
 		// because that is checked by i.HasPrev anyway
 		if i.index < 0 {
 			// Reset the index
-			i.index = i.slice.bucketCap
+			i.index = i.slice.bucketCap - 1
 			// Go to the previous bucket
 			i.bucketIndex--
 		}
@@ -235,41 +264,49 @@ func (i *distributedIterator) Prev() bool {
 	return false
 }
 
-func (i *distributedIterator) Elem() interface{} {
+func (i *distributedIterator[T]) Get() T {
 	return i.slice.buckets[i.bucketIndex][i.index]
 }
 
-func (s *Distributed) IterStart() Iterator {
-	return &distributedIterator{
-		slice: *s,
+func (i *distributedIterator[T]) Set(elem T) {
+	i.slice.buckets[i.bucketIndex][i.index] = elem
+}
+
+func (s Distributed[T]) IterStart() Iterator[T] {
+	return &distributedIterator[T]{
+		slice:       s,
 		bucketIndex: 0,
-		index: s.start - 1,
+		index:       s.start - 1,
 	}
 }
 
-func (s *Distributed) IterEnd() Iterator {
-	return &distributedIterator{
-		slice: *s,
+func (s Distributed[T]) IterEnd() Iterator[T] {
+	return &distributedIterator[T]{
+		slice:       s,
 		bucketIndex: len(s.buckets) - 1,
-		index: s.end,
+		index:       s.end,
 	}
 }
 
-func (s *Distributed) ReverseIterStart() Iterator {
+func (s Distributed[T]) ReverseIterStart() Iterator[T] {
 	return Reverse(s.IterEnd())
 }
 
-func (s *Distributed) ReverseIterEnd() Iterator {
+func (s Distributed[T]) ReverseIterEnd() Iterator[T] {
 	return Reverse(s.IterStart())
 }
 
-func (s *Distributed) DeepCopy() Slice {
-	return EmptyDistributed(0, s.bucketCap).AppendSlice(s)
+func (s Distributed[T]) DeepCopy() Slice[T] {
+	return EmptyDistributed[T](0, s.bucketCap).AppendSlice(s)
 }
 
-func (s *Distributed) Len() int {
-	// If there is only one block
-	if len(s.buckets) == 1 {
+func (s Distributed[T]) Len() int {
+	// If there are no buckets
+	if len(s.buckets) == 0 {
+		return 0
+
+		// If there is only one block
+	} else if len(s.buckets) == 1 {
 		// The length is the number of nodes between the start and end
 		return s.end - s.start
 	} else {
@@ -282,11 +319,11 @@ func (s *Distributed) Len() int {
 	}
 }
 
-// Gets the total capacity of the slice, not the bucket capacity
-func (s *Distributed) Cap() int {
+// Cap gets the total capacity of the slice, not the bucket capacity
+func (s Distributed[T]) Cap() int {
 	return len(s.buckets) * s.bucketCap
 }
 
-func (s *Distributed) ToGoSlice() []interface{} {
-	return ToGoSlice(s)
+func (s Distributed[T]) ToGoSlice() []T {
+	return ToGoSlice[T](s)
 }

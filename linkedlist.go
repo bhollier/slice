@@ -1,35 +1,38 @@
 package slice
 
-// Interface type for a singly linked list node
-type LinkedListNode interface {
-	// Get the next node
-	Next() LinkedListNode
+// LinkedListNode is an interface type for a singly linked list node
+type LinkedListNode[T any] interface {
+	// Next gets the next node
+	Next() LinkedListNode[T]
 
-	// Get the element
-	Elem() interface{}
+	// Get gets the element
+	Get() T
+
+	// Set sets the element
+	Set(T)
 }
 
-// Interface type for a doubly linked list node
-type DoublyLinkedListNode interface{
-	LinkedListNode
+// DoublyLinkedListNode is an interface type for a doubly linked list node
+type DoublyLinkedListNode[T any] interface {
+	LinkedListNode[T]
 
-	// Get the previous node
-	Prev() LinkedListNode
+	// Prev gets the previous node
+	Prev() DoublyLinkedListNode[T]
 }
 
-// Interface type for a linked list iterator
-type LinkedListIterator interface {
-	Iterator
+// LinkedListIterator is an interface type for a linked list iterator
+type LinkedListIterator[T any] interface {
+	Iterator[T]
 
-	// Gets the node the iterator is currently pointed to
-	Node() LinkedListNode
+	// Node gets the node the iterator is currently pointed to
+	Node() LinkedListNode[T]
 }
 
-// Interface Slice type for a linked list
-type LinkedList interface {
-	Slice
+// LinkedList is an interface Slice type for a linked list
+type LinkedList[T any] interface {
+	Slice[T]
 
-	// Gets the node at the given index. Returns nil if the node couldn't be
+	// Node gets the node at the given index. Returns nil if the node couldn't be
 	// found
-	Node(i int) LinkedListNode
+	Node(i int) LinkedListNode[T]
 }

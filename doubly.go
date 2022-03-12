@@ -2,58 +2,53 @@ package slice
 
 import "fmt"
 
-type doublyNode struct {
-	elem interface{}
-	next *doublyNode
-	prev *doublyNode
+type doublyNode[T any] struct {
+	elem T
+	next *doublyNode[T]
+	prev *doublyNode[T]
 }
 
-func (n *doublyNode) Next() LinkedListNode {
+func (n *doublyNode[T]) Next() LinkedListNode[T] {
 	return n.next
 }
 
-func (n *doublyNode) Prev() LinkedListNode {
+func (n *doublyNode[T]) Prev() LinkedListNode[T] {
 	return n.prev
 }
 
-func (n *doublyNode) Elem() interface{} {
+func (n *doublyNode[T]) Get() T {
 	return n.elem
 }
 
-// Slice type, implemented as a doubly linked list
-type Doubly struct {
-	len int
-	start *doublyNode
-	end *doublyNode
+func (n *doublyNode[T]) Set(elem T) {
+	n.elem = elem
 }
 
-// Create an empty Doubly Slice
-func EmptyDoubly(len int) Slice {
-	var s Slice
-	s = &Doubly{}
-	for i := 0; i < len; i++ {
-		s = s.Append(nil)
-	}
-	return s
+// Doubly is a Slice type, implemented as a doubly linked list
+type Doubly[T any] struct {
+	len   int
+	start *doublyNode[T]
+	end   *doublyNode[T]
 }
 
-// Create a Doubly Slice from any type of slice
-func DoublyFrom(slice interface{}) Slice {
-	return appendNativeSliceToSlice(EmptyDoubly(0), slice)
+// EmptyDoubly creates an empty Doubly Slice
+func EmptyDoubly[T any]() Slice[T] {
+	return Doubly[T]{}
 }
 
-func doublyFrom(elems []interface{}) *Doubly {
-	s := Doubly{}
+// DoublyFrom creates a Doubly Slice from any type of slice
+func DoublyFrom[T any](elems []T) Slice[T] {
+	s := Doubly[T]{}
 
 	// Iterate over the elements
 	for i := 0; i < len(elems); i++ {
 		// If the list is empty
 		if i == 0 {
-			s.start = new(doublyNode)
+			s.start = new(doublyNode[T])
 			s.start.elem = elems[i]
 			s.end = s.start
 		} else {
-			s.end.next = new(doublyNode)
+			s.end.next = new(doublyNode[T])
 			s.end.next.prev = s.end
 			s.end.next.elem = elems[i]
 			s.end = s.end.next
@@ -62,81 +57,74 @@ func doublyFrom(elems []interface{}) *Doubly {
 	// Set the length
 	s.len = len(elems)
 
-	return &s
+	return s
 }
 
-func (s* Doubly) join(rhs *Doubly) {
+func joinDoubly[T any](lhs, rhs Doubly[T]) Doubly[T] {
 	// If the left linked list is empty
-	if s.len == 0 {
-		// The left linked list is just the right one
-		*s = *rhs
+	if lhs.len == 0 {
+		// Just return the right list
+		return rhs
 
 		// If the right linked list is empty
 	} else if rhs.len == 0 {
-		// Nothing needs to be done
+		// Just return the left list
+		return lhs
 
 		// Otherwise
 	} else {
-		// Connect the pointers
-		s.end.next = rhs.start
-		rhs.start.prev = s.end
-		s.end = rhs.end
+		// Connect the pointers from the right to the left
+		lhs.end.next = rhs.start
+		rhs.start.prev = lhs.end
+		lhs.end = rhs.end
 
 		// Update the length
-		s.len = s.len + rhs.len
+		lhs.len += rhs.len
+		return lhs
 	}
 }
 
-func (s *Doubly) Append(elems ...interface{}) Slice {
-	return s.AppendSlice(doublyFrom(elems))
+func (s Doubly[T]) Append(elems ...T) Slice[T] {
+	return s.AppendSlice(DoublyFrom(elems))
 }
 
-func (s *Doubly) AppendSlice(elems Slice) Slice {
-	// Copy the linked list
-	lhs := *s
-
+func (s Doubly[T]) AppendSlice(elems Slice[T]) Slice[T] {
 	// Try to convert the elements slice to a linked list
-	rhs, ok := elems.(*Doubly)
+	rhs, ok := elems.(Doubly[T])
 	// If it isn't a linked list
 	if !ok {
 		// Convert it to a linked list
-		rhs = doublyFrom(elems.ToGoSlice())
+		rhs = DoublyFrom(elems.ToGoSlice()).(Doubly[T])
 	}
 
 	// Join the linked lists
-	lhs.join(rhs)
-
-	// Return the slice
-	return &lhs
+	return joinDoubly(s, rhs)
 }
 
-func (s *Doubly) Prepend(elems ...interface{}) Slice {
-	return s.PrependSlice(doublyFrom(elems))
+func (s Doubly[T]) Prepend(elems ...T) Slice[T] {
+	return s.PrependSlice(DoublyFrom(elems))
 }
 
-func (s *Doubly) PrependSlice(elems Slice) Slice {
+func (s Doubly[T]) PrependSlice(elems Slice[T]) Slice[T] {
 	// Try to convert the elements slice to a linked list
-	lhs, ok := elems.(*Doubly)
+	lhs, ok := elems.(Doubly[T])
 	// If it isn't a linked list
 	if !ok {
 		// Convert it to a linked list
-		lhs = doublyFrom(elems.ToGoSlice())
+		lhs = DoublyFrom(elems.ToGoSlice()).(Doubly[T])
 	}
 
 	// Connect the linked lists
-	lhs.join(s)
-
-	// Return the linked list
-	return lhs
+	return joinDoubly(lhs, s)
 }
 
-func (s *Doubly) node(i int) *doublyNode {
+func (s Doubly[T]) node(i int) *doublyNode[T] {
 	if i < 0 || i >= s.len {
 		panic(fmt.Sprintf("index [%d] out of range", i))
 	}
 
 	// If the index is in the first half, iterate forwards
-	if i <= s.len / 2 {
+	if i <= s.len/2 {
 		// Create a counter
 		ctr := 0
 		// Iterate over the list
@@ -170,51 +158,73 @@ func (s *Doubly) node(i int) *doublyNode {
 	return nil
 }
 
-func (s *Doubly) Node(i int) LinkedListNode {
+func (s Doubly[T]) Node(i int) LinkedListNode[T] {
 	return s.node(i)
 }
 
-func (s *Doubly) Slice(i, j int) Slice {
-	// Create the slice
-	slice := *s
-
+func (s Doubly[T]) Slice(i, j int) Slice[T] {
 	if j < i {
 		panic(fmt.Sprintf("invalid slice index: %d > %d", i, j))
 	}
 
-	// If i is the start, the start is the start of the slice
-	if i == 0 {slice.start = s.start
+	if j-i == 0 {
+		return EmptyDoubly[T]()
+	}
+
+	// If the slice needs to be grown
+	if j > s.Len() {
+		s = s.Append(make([]T, j-s.Len())...).(Doubly[T])
+	}
+
+	original := s
+
+	// If i is the start
+	if i == 0 {
+		// The start is the start of the slice, nothing needs to be done
+
 		// If i is the end, the start is the end of the slice
-	} else if i == slice.len {slice.start = s.end
-	} else {slice.start = s.node(i)}
+	} else if i == s.len {
+		s.start = s.end
+	} else {
+		s.start = s.node(i)
+	}
 
 	// If j is at the start, the end is the start of the slice
-	if j == 0 {slice.end = s.start
-		// If j is at the end, the end is the end of the slice
-	} else if j == slice.len {slice.end = s.end
-	} else {slice.end = s.node(j - 1)}
+	if j == 0 {
+		s.end = s.start
+		// If j is at the end
+	} else if j == s.len {
+		// The end is the end of the slice, nothing needs to be done
+
+	} else {
+		s.end = original.node(j - 1)
+	}
 
 	// Set the length
-	slice.len = j - i
+	s.len = j - i
 
-	return &slice
+	return s
 }
 
-func (s *Doubly) Index(i int) interface{} {
-	return s.Node(i).Elem()
+func (s Doubly[T]) Get(i int) T {
+	return s.Node(i).Get()
 }
 
-type doublyIterator struct {
-	node *doublyNode
-	start *doublyNode
-	end *doublyNode
+func (s Doubly[T]) Set(i int, elem T) {
+	s.Node(i).Set(elem)
 }
 
-func (i *doublyIterator) HasNext() bool {
+type doublyIterator[T any] struct {
+	node  *doublyNode[T]
+	start *doublyNode[T]
+	end   *doublyNode[T]
+}
+
+func (i *doublyIterator[T]) HasNext() bool {
 	return i.node != i.end
 }
 
-func (i *doublyIterator) Next() bool {
+func (i *doublyIterator[T]) Next() bool {
 	if i.HasNext() {
 		i.node = i.node.next
 		return true
@@ -222,11 +232,11 @@ func (i *doublyIterator) Next() bool {
 	return false
 }
 
-func (i *doublyIterator) HasPrev() bool {
+func (i *doublyIterator[T]) HasPrev() bool {
 	return i.node != i.start
 }
 
-func (i *doublyIterator) Prev() bool {
+func (i *doublyIterator[T]) Prev() bool {
 	if i.HasPrev() {
 		i.node = i.node.prev
 		return true
@@ -234,54 +244,64 @@ func (i *doublyIterator) Prev() bool {
 	return false
 }
 
-func (i *doublyIterator) Node() LinkedListNode {
+func (i *doublyIterator[T]) Node() LinkedListNode[T] {
 	return i.node
 }
 
-func (i *doublyIterator) Elem() interface{} {
-	return i.Node().Elem()
+func (i *doublyIterator[T]) Get() T {
+	return i.Node().Get()
 }
 
-func (s *Doubly) IterStart() Iterator {
-	return &doublyIterator{
+func (i *doublyIterator[T]) Set(elem T) {
+	i.Node().Set(elem)
+}
+
+func (s Doubly[T]) IterStart() Iterator[T] {
+	if s.Len() == 0 {
+		return &doublyIterator[T]{}
+	}
+	return &doublyIterator[T]{
 		// Set the node as a new one that is one element out of bounds
-		node: &doublyNode{next: s.start},
+		node:  &doublyNode[T]{next: s.start},
 		start: s.start,
-		end: s.end,
+		end:   s.end,
 	}
 }
 
-func (s *Doubly) IterEnd() Iterator {
-	return &doublyIterator{
+func (s Doubly[T]) IterEnd() Iterator[T] {
+	if s.Len() == 0 {
+		return &doublyIterator[T]{}
+	}
+	return &doublyIterator[T]{
 		// Set the node as a new one that is one element out of bounds
-		node: &doublyNode{prev: s.end},
+		node:  &doublyNode[T]{prev: s.end},
 		start: s.start,
-		end: s.end,
+		end:   s.end,
 	}
 }
 
-func (s *Doubly) ReverseIterStart() Iterator {
+func (s Doubly[T]) ReverseIterStart() Iterator[T] {
 	return Reverse(s.IterEnd())
 }
 
-func (s *Doubly) ReverseIterEnd() Iterator {
+func (s Doubly[T]) ReverseIterEnd() Iterator[T] {
 	return Reverse(s.IterStart())
 }
 
-func (s *Doubly) DeepCopy() Slice {
+func (s Doubly[T]) DeepCopy() Slice[T] {
 	// Make sure to append the slice as a Go slice (to make sure it's a deep
 	// copy)
-	return EmptyDoubly(0).Append(s.ToGoSlice()...)
+	return EmptyDoubly[T]().Append(s.ToGoSlice()...)
 }
 
-func (s *Doubly) Len() int {
+func (s Doubly[T]) Len() int {
 	return s.len
 }
 
-func (s *Doubly) Cap() int {
+func (s Doubly[T]) Cap() int {
 	return s.Len()
 }
 
-func (s *Doubly) ToGoSlice() []interface{} {
-	return ToGoSlice(s)
+func (s Doubly[T]) ToGoSlice() []T {
+	return ToGoSlice[T](s)
 }

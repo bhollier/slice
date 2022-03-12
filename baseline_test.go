@@ -34,7 +34,7 @@ func BenchmarkBaselineSlice_Prepend(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		n := atLeast(1, r.Intn(benchmarkMaxSliceInserts))
-		lhs := make([]int, n, n + len(s))
+		lhs := make([]int, n, n+len(s))
 		for k := 0; k < n; k++ {
 			lhs[k] = r.Int()
 		}
@@ -48,7 +48,7 @@ func BenchmarkBaselineInterfaceSlice_Prepend(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		n := atLeast(1, r.Intn(benchmarkMaxSliceInserts))
-		lhs := make([]interface{}, n, n + len(s))
+		lhs := make([]interface{}, n, n+len(s))
 		for k := 0; k < n; k++ {
 			lhs[k] = r.Int()
 		}
@@ -84,7 +84,7 @@ func BenchmarkBaselineSlice_Erase(b *testing.B) {
 			s = intSliceAddElems(b, r, s)
 		}
 		elemToRemove := r.Intn(len(s))
-		s = append(s[:elemToRemove], s[elemToRemove + 1:]...)
+		s = append(s[:elemToRemove], s[elemToRemove+1:]...)
 	}
 }
 
@@ -98,7 +98,7 @@ func BenchmarkBaselineInterfaceSlice_Erase(b *testing.B) {
 			s = interfaceSliceAddElems(b, r, s)
 		}
 		elemToRemove := r.Intn(len(s))
-		s = append(s[:elemToRemove], s[elemToRemove + 1:]...)
+		s = append(s[:elemToRemove], s[elemToRemove+1:]...)
 	}
 }
 
@@ -112,7 +112,7 @@ func BenchmarkBaselineSlice_Index(b *testing.B) {
 		start := r.Intn(len(s) - readAmount)
 		sum := 0
 		for j := 0; j < readAmount; j++ {
-			sum += s[j + start]
+			sum += s[j+start]
 		}
 	}
 }
@@ -127,7 +127,7 @@ func BenchmarkBaselineInterfaceSlice_Index(b *testing.B) {
 		start := r.Intn(len(s) - readAmount)
 		sum := 0
 		for j := 0; j < readAmount; j++ {
-			sum += s[j + start].(int)
+			sum += s[j+start].(int)
 		}
 	}
 }
@@ -141,7 +141,7 @@ func BenchmarkBaselineSlice_Iter(b *testing.B) {
 		readAmount := r.Intn(benchmarkMinReadAmount)
 		start := r.Intn(len(s) - readAmount)
 		sum := 0
-		for _, n := range s[start:start + readAmount] {
+		for _, n := range s[start : start+readAmount] {
 			sum += n
 		}
 	}
@@ -156,7 +156,7 @@ func BenchmarkBaselineInterfaceSlice_Iter(b *testing.B) {
 		readAmount := r.Intn(benchmarkMinReadAmount)
 		start := r.Intn(len(s) - readAmount)
 		sum := 0
-		for _, n := range s[start:start + readAmount] {
+		for _, n := range s[start : start+readAmount] {
 			sum += n.(int)
 		}
 	}
