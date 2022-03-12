@@ -6,8 +6,8 @@ import (
 )
 
 // DefaultDistributedBucketCapacity is the default capacity of a distributed slice bucket,
-// currently 256 bytes
-const DefaultDistributedBucketCapacity = 256
+// currently 1024 bytes
+const DefaultDistributedBucketCapacity = 1024
 
 //	int(unsafe.Sizeof(cpu.CacheLinePad{}) /
 //		unsafe.Sizeof(interface{}(nil)))
