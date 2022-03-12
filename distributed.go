@@ -7,7 +7,7 @@ import (
 
 // DefaultDistributedBucketCapacity is the default capacity of a distributed slice bucket,
 // currently 256 bytes
-const DefaultDistributedBucketCapacity = int(256 / unsafe.Sizeof(interface{}(nil)))
+const DefaultDistributedBucketCapacity = 256
 
 //	int(unsafe.Sizeof(cpu.CacheLinePad{}) /
 //		unsafe.Sizeof(interface{}(nil)))
@@ -35,7 +35,8 @@ func EmptyDistributed[T any](len, cap int) Slice[T] {
 	// If no capacity was given
 	if cap == 0 {
 		// Set it to the default
-		cap = DefaultDistributedBucketCapacity
+		var t T
+		cap = int(DefaultDistributedBucketCapacity / unsafe.Sizeof(t))
 	}
 
 	// Calculate the initial number of buckets
